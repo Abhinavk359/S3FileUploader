@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Image/File Uploader</title>
+    <style>
+        body {
+            background: linear-gradient(120deg, #f6d365 0%, #fda085 100%);
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .container {
+            background: #fff;
+            max-width: 480px;
+            margin: 48px auto 0 auto;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 32px 28px 24px 28px;
+        }
+        h1 {
+            text-align: center;
+            color: #f76b1c;
+            margin-bottom: 8px;
+            font-size: 2.2rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 28px;
+            font-size: 1.1rem;
+        }
+        .upload-section {
+            background: #f9f9f9;
+            border: 2px dashed #fda085;
+            border-radius: 12px;
+            padding: 24px 16px;
+            text-align: center;
+            margin-bottom: 32px;
+            transition: background 0.2s;
+        }
+        .upload-section.dragover {
+            background: #fff3e6;
+        }
+        .upload-btn, .download-btn {
+            background: linear-gradient(90deg, #fda085 0%, #f6d365 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 28px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: box-shadow 0.2s, background 0.2s;
+            box-shadow: 0 2px 8px rgba(253,160,133,0.12);
+        }
+        .upload-btn:hover, .download-btn:hover {
+            background: linear-gradient(90deg, #f6d365 0%, #fda085 100%);
+            box-shadow: 0 4px 16px rgba(253,160,133,0.18);
+        }
+        #uploadStatus {
+            text-align: center;
+            margin-top: 10px;
+            color: #f76b1c;
+            min-height: 24px;
+        }
+        .download-section {
+            margin-top: 24px;
+            text-align: center;
+        }
+        .file-dropdown {
+            width: 80%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #fda085;
+            font-size: 1rem;
+            margin-bottom: 12px;
+            background: #f9f9f9;
+            color: #333;
+        }
+        .no-files {
+            color: #aaa;
+            margin-bottom: 12px;
+        }
+        @media (max-width: 600px) {
+            .container {
+                padding: 18px 4vw 12px 4vw;
+            }
+            h1 {
+                font-size: 1.5rem;
+            }
+            .file-dropdown {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>File Uploader</h1>
+    <div class="subtitle">Upload and download your files easily</div>
+    <div class="upload-section" id="uploadSection">
+        <form id="uploadForm">
+            <input type="file" id="fileInput" name="file" style="margin-bottom: 10px;" required />
+            <br>
+            <button class="upload-btn" type="submit">Upload</button>
+        </form>
+        <div id="uploadStatus"></div>
+    </div>
+    <div class="download-section">
+        <h2 style="color:#f76b1c; font-size:1.2rem; margin-bottom:12px;">Available Files</h2>
+        <div id="fileDropdownContainer">
+            <!-- Dropdown will be inserted here -->
+        </div>
+        <button class="download-btn" id="downloadBtn" style="display:none;">Download</button>
+    </div>
+</div>
+<script>
+    // Drag and drop highlight
+    const uploadSection = document.getElementById('uploadSection');
+    const fileInput = document.getElementById('fileInput');
+    uploadSection.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadSection.classList.add('dragover');
+    });
+    uploadSection.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadSection.classList.remove('dragover');
+    });
+    uploadSection.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadSection.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+        }
+    });
+
+    // Handle file upload
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (!fileInput.files.length) return;
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        fetch('/s3/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(msg => {
+            document.getElementById('uploadStatus').innerText = msg;
+            loadFiles();
+        })
+        .catch(() => {
+            document.getElementById('uploadStatus').innerText = 'Upload failed.';
+        });
+    });
+
+    // Load file list and populate dropdown
+    function loadFiles() {
+        fetch('/s3/list')
+            .then(response => response.json())
+            .then(files => {
+                const container = document.getElementById('fileDropdownContainer');
+                const downloadBtn = document.getElementById('downloadBtn');
+                container.innerHTML = '';
+                downloadBtn.style.display = 'none';
+                if (!files || files.length === 0) {
+                    container.innerHTML = '<div class="no-files">No files found.</div>';
+                    return;
+                }
+                const select = document.createElement('select');
+                select.className = 'file-dropdown';
+                select.id = 'fileDropdown';
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file;
+                    option.textContent = file;
+                    select.appendChild(option);
+                });
+                container.appendChild(select);
+                downloadBtn.style.display = 'inline-block';
+            });
+    }
+
+    // Download selected file
+    document.getElementById('downloadBtn').addEventListener('click', function() {
+        const dropdown = document.getElementById('fileDropdown');
+        if (dropdown && dropdown.value) {
+            const fileName = encodeURIComponent(dropdown.value);
+            const link = document.createElement('a');
+            link.href = `/s3/download/${fileName}`;
+            link.download = dropdown.value;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    });
+
+    // Initial load
+    loadFiles();
+</script>
+</body>
+</html> 
